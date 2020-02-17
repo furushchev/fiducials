@@ -13,7 +13,7 @@ namespace aruco_detect
 void ArucoDetectNodelet::onInit()
 {
   fiducials_node = new aruco_detect::FiducialsNode(
-      getMTNodeHandle(), getMTPrivateNodeHandle());
+      getNodeHandle(), getPrivateNodeHandle());
 }
 
 ArucoDetectNodelet::~ArucoDetectNodelet()
