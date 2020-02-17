@@ -466,7 +466,7 @@ void FiducialsNode::subscribe()
 
         img_sub = it.subscribe("camera", 1,
                                &FiducialsNode::imageCallback, this);
-        caminfo_sub = nh.subscribe("camera_info", 1,
+        caminfo_sub = pnh.subscribe("camera_info", 1,
                                    &FiducialsNode::camInfoCallback, this);
         ROS_INFO("subscribed camera/camera_info topics");
     }
@@ -484,7 +484,7 @@ void FiducialsNode::unsubscribe()
     }
 }
 
-FiducialsNode::FiducialsNode(ros::NodeHandle nh_, ros::NodeHandle pnh_) : nh(nh_), pnh(pnh_), it(nh)
+FiducialsNode::FiducialsNode(ros::NodeHandle nh_, ros::NodeHandle pnh_) : nh(nh_), pnh(pnh_), it(pnh_)
 {
     frameNum = 0;
 
@@ -556,21 +556,21 @@ FiducialsNode::FiducialsNode(ros::NodeHandle nh_, ros::NodeHandle pnh_) : nh(nh_
         &FiducialsNode::imageSubscriberConnectionCallback, this, _1);
     ros::SubscriberStatusCallback conn_cb = boost::bind(&FiducialsNode::subscriberConnectionCallback,
                                                         this, _1);
-    image_pub = it.advertise("/fiducial_images", 1, it_conn_cb, it_conn_cb);
+    image_pub = it.advertise("fiducial_images", 1, it_conn_cb, it_conn_cb);
 
 
-    vertices_pub = new ros::Publisher(nh.advertise<fiducial_msgs::FiducialArray>(
+    vertices_pub = new ros::Publisher(pnh.advertise<fiducial_msgs::FiducialArray>(
                                           "fiducial_vertices", 1, conn_cb, conn_cb));
 
-    pose_pub = new ros::Publisher(nh.advertise<fiducial_msgs::FiducialTransformArray>(
+    pose_pub = new ros::Publisher(pnh.advertise<fiducial_msgs::FiducialTransformArray>(
                                       "fiducial_transforms", 1, conn_cb, conn_cb));
 
     dictionary = aruco::getPredefinedDictionary(dicno);
 
-    ignore_sub = nh.subscribe("ignore_fiducials", 1,
+    ignore_sub = pnh.subscribe("ignore_fiducials", 1,
                               &FiducialsNode::ignoreCallback, this);
 
-    service_enable_detections = nh.advertiseService("enable_detections",
+    service_enable_detections = pnh.advertiseService("enable_detections",
                         &FiducialsNode::enableDetectionsCallback, this);
 
     callbackType = boost::bind(&FiducialsNode::configCallback, this, _1, _2);
