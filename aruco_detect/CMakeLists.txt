@@ -14,6 +14,7 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
   fiducial_msgs
   dynamic_reconfigure
+  nodelet
 )
 
 find_package(OpenCV REQUIRED)
@@ -28,22 +29,29 @@ catkin_package(INCLUDE_DIRS DEPENDS OpenCV)
 
 add_definitions(-std=c++11)
 
-include_directories(${catkin_INCLUDE_DIRS})
-include_directories(${OpenCV_INCLUDE_DIRS})
+include_directories(include
+  ${catkin_INCLUDE_DIRS}
+  ${OpenCV_INCLUDE_DIRS})
 
-add_executable(aruco_detect src/aruco_detect.cpp)
+add_library(${PROJECT_NAME}
+  src/aruco_detect.cpp
+  src/aruco_detect_nodelet.cpp)
+add_dependencies(${PROJECT_NAME}
+  ${${PROJECT_NAME}_EXPORTED_TARGETS}
+  ${catkin_EXPORTED_TARGETS})
 
-add_dependencies(aruco_detect ${${PROJECT_NAME}_EXPORTED_TARGETS}
-                 ${catkin_EXPORTED_TARGETS})
+target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES} ${OpenCV_LIBS})
 
-target_link_libraries(aruco_detect ${catkin_LIBRARIES} ${OpenCV_LIBS})
+add_executable(aruco_detect_node src/aruco_detect_node.cpp)
+set_target_properties(aruco_detect_node PROPERTIES OUTPUT_NAME aruco_detect)
+target_link_libraries(aruco_detect_node ${PROJECT_NAME})
 
 #############
 ## Install ##
 #############
 
 ## Mark executables and/or libraries for installation
-install(TARGETS aruco_detect
+install(TARGETS aruco_detect aruco_detect_node
    ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
    LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
    RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}

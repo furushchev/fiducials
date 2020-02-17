@@ -1,0 +1,7 @@
+<library path="lib/libaruco_detect">
+  <class name="aruco_detect/ArucoDetect"
+         type="aruco_detect::ArucoDetectNodelet"
+         base_class_type="nodelet::Nodelet">
+    <description>Nodelet to detect aruco marker</description>
+  </class>
+</library>

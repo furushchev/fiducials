@@ -33,7 +33,6 @@
 #include <sys/time.h>
 #include <unistd.h>
 
-#include <ros/ros.h>
 #include <tf/transform_datatypes.h>
 #include <tf2/LinearMath/Transform.h>
 #include <tf2_ros/buffer.h>
@@ -41,97 +40,20 @@
 #include <tf2_ros/transform_listener.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <visualization_msgs/Marker.h>
-#include <image_transport/image_transport.h>
 #include <cv_bridge/cv_bridge.h>
 #include <sensor_msgs/image_encodings.h>
-#include <dynamic_reconfigure/server.h>
-#include <std_srvs/SetBool.h>
-#include <std_msgs/String.h>
-
-#include "fiducial_msgs/Fiducial.h"
-#include "fiducial_msgs/FiducialArray.h"
-#include "fiducial_msgs/FiducialTransform.h"
-#include "fiducial_msgs/FiducialTransformArray.h"
-#include "aruco_detect/DetectorParamsConfig.h"
-
-#include <opencv2/highgui.hpp>
-#include <opencv2/aruco.hpp>
-#include <opencv2/calib3d.hpp>
 
 #include <list>
 #include <string>
 #include <boost/algorithm/string.hpp>
 
+#include "aruco_detect/aruco_detect.hpp"
+
 using namespace std;
 using namespace cv;
 
-class FiducialsNode {
-  private:
-    ros::Publisher * vertices_pub;
-    ros::Publisher * pose_pub;
-
-    ros::Subscriber caminfo_sub;
-    ros::Subscriber ignore_sub;
-    image_transport::ImageTransport it;
-    image_transport::Subscriber img_sub;
-
-    ros::ServiceServer service_enable_detections;
-
-    // if set, we publish the images that contain fiducials
-    bool publish_images;
-    bool enable_detections;
-    bool subscribe_topics;
-
-    double fiducial_len;
-
-    bool doPoseEstimation;
-    bool haveCamInfo;
-    cv::Mat cameraMatrix;
-    cv::Mat distortionCoeffs;
-    int frameNum;
-    std::string frameId;
-    std::vector<int> ignoreIds;
-    std::map<int, double> fiducialLens;
-    ros::NodeHandle nh;
-    ros::NodeHandle pnh;
-
-    image_transport::Publisher image_pub;
-
-    cv::Ptr<aruco::DetectorParameters> detectorParams;
-    cv::Ptr<aruco::Dictionary> dictionary;
-
-    void handleIgnoreString(const std::string& str);
-
-    void estimatePoseSingleMarkers(const vector<int> &ids,
-                                   const vector<vector<Point2f > >&corners,
-                                   float markerLength,
-                                   const cv::Mat &cameraMatrix,
-                                   const cv::Mat &distCoeffs,
-                                   vector<Vec3d>& rvecs, vector<Vec3d>& tvecs,
-                                   vector<double>& reprojectionError);
-
-
-    void ignoreCallback(const std_msgs::String &msg);
-    void imageCallback(const sensor_msgs::ImageConstPtr &msg);
-    void camInfoCallback(const sensor_msgs::CameraInfo::ConstPtr &msg);
-    void configCallback(aruco_detect::DetectorParamsConfig &config, uint32_t level);
-
-    bool enableDetectionsCallback(std_srvs::SetBool::Request &req,
-                                std_srvs::SetBool::Response &res);
-
-    void subscribe();
-    void unsubscribe();
-    void subscriberConnectionCallback(const ros::SingleSubscriberPublisher &ssp);
-    void imageSubscriberConnectionCallback(const image_transport::SingleSubscriberPublisher &ssp);
-    void subscriberConnectionCallback();
-
-    dynamic_reconfigure::Server<aruco_detect::DetectorParamsConfig> configServer;
-    dynamic_reconfigure::Server<aruco_detect::DetectorParamsConfig>::CallbackType callbackType;
-
-  public:
-    FiducialsNode();
-};
-
+namespace aruco_detect
+{
 
 /**
   * @brief Return object points for the system centered in a single marker, given the marker length
@@ -562,7 +484,7 @@ void FiducialsNode::unsubscribe()
     }
 }
 
-FiducialsNode::FiducialsNode() : nh(), pnh("~"), it(nh)
+FiducialsNode::FiducialsNode(ros::NodeHandle nh_, ros::NodeHandle pnh_) : nh(nh_), pnh(pnh_), it(nh)
 {
     frameNum = 0;
 
@@ -695,13 +617,4 @@ FiducialsNode::FiducialsNode() : nh(), pnh("~"), it(nh)
 
     ROS_INFO("Aruco detection ready");
 }
-
-int main(int argc, char ** argv) {
-    ros::init(argc, argv, "aruco_detect");
-
-    FiducialsNode* node = new FiducialsNode();
-
-    ros::spin();
-
-    return 0;
 }
