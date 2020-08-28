@@ -484,7 +484,7 @@ void FiducialsNode::unsubscribe()
     }
 }
 
-FiducialsNode::FiducialsNode(ros::NodeHandle nh_, ros::NodeHandle pnh_) : nh(nh_), pnh(pnh_), it(pnh_)
+FiducialsNode::FiducialsNode(ros::NodeHandle nh_, ros::NodeHandle pnh_) : nh(nh_), pnh(pnh_), it(pnh_), configServer(pnh)
 {
     frameNum = 0;
 
