@@ -169,9 +169,11 @@ void FiducialsNode::estimatePoseSingleMarkers(const vector<int> &ids,
 void FiducialsNode::configCallback(aruco_detect::DetectorParamsConfig & config, uint32_t level)
 {
     /* Don't load initial config, since it will overwrite the rosparam settings */
+    /* NOTE: Disable not loading initial config feature (by furushchev)
     if (level == 0xFFFFFFFF) {
         return;
     }
+    */
 
     detectorParams->adaptiveThreshConstant = config.adaptiveThreshConstant;
     detectorParams->adaptiveThreshWinSizeMin = config.adaptiveThreshWinSizeMin;
