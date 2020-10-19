@@ -61,6 +61,7 @@ class FiducialsNode {
 
     image_transport::Publisher image_pub;
 
+    boost::mutex mutex;
     cv::Ptr<cv::aruco::DetectorParameters> detectorParams;
     cv::Ptr<cv::aruco::Dictionary> dictionary;
 

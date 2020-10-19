@@ -168,13 +168,7 @@ void FiducialsNode::estimatePoseSingleMarkers(const vector<int> &ids,
 
 void FiducialsNode::configCallback(aruco_detect::DetectorParamsConfig & config, uint32_t level)
 {
-    /* Don't load initial config, since it will overwrite the rosparam settings */
-    /* NOTE: Disable not loading initial config feature (by furushchev)
-    if (level == 0xFFFFFFFF) {
-        return;
-    }
-    */
-
+    boost::mutex::scoped_lock lock(mutex);
     detectorParams->adaptiveThreshConstant = config.adaptiveThreshConstant;
     detectorParams->adaptiveThreshWinSizeMin = config.adaptiveThreshWinSizeMin;
     detectorParams->adaptiveThreshWinSizeMax = config.adaptiveThreshWinSizeMax;
@@ -244,6 +238,7 @@ void FiducialsNode::camInfoCallback(const sensor_msgs::CameraInfo::ConstPtr& msg
 }
 
 void FiducialsNode::imageCallback(const sensor_msgs::ImageConstPtr & msg) {
+    boost::mutex::scoped_lock lock(mutex);
     ROS_INFO("Got image %d", msg->header.seq);
     frameNum++;
 
@@ -503,6 +498,8 @@ FiducialsNode::FiducialsNode(ros::NodeHandle nh_, ros::NodeHandle pnh_) : nh(nh_
     int dicno;
 
     detectorParams = new aruco::DetectorParameters();
+    callbackType = boost::bind(&FiducialsNode::configCallback, this, _1, _2);
+    configServer.setCallback(callbackType);
 
     pnh.param<bool>("publish_images", publish_images, false);
     pnh.param<double>("fiducial_len", fiducial_len, 0.14);
@@ -574,48 +571,6 @@ FiducialsNode::FiducialsNode(ros::NodeHandle nh_, ros::NodeHandle pnh_) : nh(nh_
 
     service_enable_detections = pnh.advertiseService("enable_detections",
                         &FiducialsNode::enableDetectionsCallback, this);
-
-    callbackType = boost::bind(&FiducialsNode::configCallback, this, _1, _2);
-    configServer.setCallback(callbackType);
-
-    pnh.param<double>("adaptiveThreshConstant", detectorParams->adaptiveThreshConstant, 7);
-    pnh.param<int>("adaptiveThreshWinSizeMax", detectorParams->adaptiveThreshWinSizeMax, 53); /* defailt 23 */
-    pnh.param<int>("adaptiveThreshWinSizeMin", detectorParams->adaptiveThreshWinSizeMin, 3);
-    pnh.param<int>("adaptiveThreshWinSizeStep", detectorParams->adaptiveThreshWinSizeStep, 4); /* default 10 */
-    pnh.param<int>("cornerRefinementMaxIterations", detectorParams->cornerRefinementMaxIterations, 30);
-    pnh.param<double>("cornerRefinementMinAccuracy", detectorParams->cornerRefinementMinAccuracy, 0.01); /* default 0.1 */
-    pnh.param<int>("cornerRefinementWinSize", detectorParams->cornerRefinementWinSize, 5);
-#if CV_MAJOR_VERSION<3 || (CV_MAJOR_VERSION<=3 && CV_MINOR_VERSION<=2)
-    pnh.param<bool>("doCornerRefinement",detectorParams->doCornerRefinement, true); /* default false */
-#else
-    bool doCornerRefinement = true;
-    pnh.param<bool>("doCornerRefinement", doCornerRefinement, true);
-    if (doCornerRefinement) {
-       bool cornerRefinementSubPix = true;
-       pnh.param<bool>("cornerRefinementSubPix", cornerRefinementSubPix, true);
-       if (cornerRefinementSubPix) {
-         detectorParams->cornerRefinementMethod = aruco::CORNER_REFINE_SUBPIX;
-       }
-       else {
-         detectorParams->cornerRefinementMethod = aruco::CORNER_REFINE_CONTOUR;
-       }
-    }
-    else {
-       detectorParams->cornerRefinementMethod = aruco::CORNER_REFINE_NONE;
-    }
-#endif
-    pnh.param<double>("errorCorrectionRate", detectorParams->errorCorrectionRate , 0.6);
-    pnh.param<double>("minCornerDistanceRate", detectorParams->minCornerDistanceRate , 0.05);
-    pnh.param<int>("markerBorderBits", detectorParams->markerBorderBits, 1);
-    pnh.param<double>("maxErroneousBitsInBorderRate", detectorParams->maxErroneousBitsInBorderRate, 0.04);
-    pnh.param<int>("minDistanceToBorder", detectorParams->minDistanceToBorder, 3);
-    pnh.param<double>("minMarkerDistanceRate", detectorParams->minMarkerDistanceRate, 0.05);
-    pnh.param<double>("minMarkerPerimeterRate", detectorParams->minMarkerPerimeterRate, 0.1); /* default 0.3 */
-    pnh.param<double>("maxMarkerPerimeterRate", detectorParams->maxMarkerPerimeterRate, 4.0);
-    pnh.param<double>("minOtsuStdDev", detectorParams->minOtsuStdDev, 5.0);
-    pnh.param<double>("perspectiveRemoveIgnoredMarginPerCell", detectorParams->perspectiveRemoveIgnoredMarginPerCell, 0.13);
-    pnh.param<int>("perspectiveRemovePixelPerCell", detectorParams->perspectiveRemovePixelPerCell, 8);
-    pnh.param<double>("polygonalApproxAccuracyRate", detectorParams->polygonalApproxAccuracyRate, 0.01); /* default 0.05 */
 
     ROS_INFO("Aruco detection ready");
 }
