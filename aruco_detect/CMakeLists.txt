@@ -34,13 +34,14 @@ include_directories(include
   ${OpenCV_INCLUDE_DIRS})
 
 add_library(${PROJECT_NAME}
+  src/aruco.cpp
   src/aruco_detect.cpp
   src/aruco_detect_nodelet.cpp)
 add_dependencies(${PROJECT_NAME}
   ${${PROJECT_NAME}_EXPORTED_TARGETS}
   ${catkin_EXPORTED_TARGETS})
 
-target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES} ${OpenCV_LIBS})
+target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES} ${OpenCV_LIBRARIES})
 
 add_executable(aruco_detect_node src/aruco_detect_node.cpp)
 set_target_properties(aruco_detect_node PROPERTIES OUTPUT_NAME aruco_detect)
