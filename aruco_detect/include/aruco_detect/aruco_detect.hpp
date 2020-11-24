@@ -17,8 +17,8 @@
 #include <std_msgs/String.h>
 
 #include <opencv2/highgui.hpp>
-#include <opencv2/aruco.hpp>
 #include <opencv2/calib3d.hpp>
+#include "aruco_detect/aruco.hpp"
 
 #include "fiducial_msgs/Fiducial.h"
 #include "fiducial_msgs/FiducialArray.h"
