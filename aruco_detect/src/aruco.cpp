@@ -37,6 +37,7 @@ the use of this software, even if advised of the possibility of such damage.
 */
 
 // #include "precomp.hpp"
+#include <iostream>
 #include "aruco_detect/aruco.hpp"
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
@@ -1572,6 +1573,233 @@ double calibrateCameraAruco(InputArrayOfArrays _corners, InputArray _ids, InputA
       noArray(), noArray(), noArray(), flags, criteria);
 }
 
+
+// GITAI modified functions
+
+class DetectInitialCandidatesParallelDebug : public ParallelLoopBody {
+    public:
+    DetectInitialCandidatesParallelDebug(const Mat *_grey,
+                                    vector< vector< vector< Point2f > > > *_candidatesArrays,
+                                    vector< vector< vector< Point > > > *_contoursArrays,
+                                    vector< Mat > *_thresholdsArrays,
+                                    const Ptr<DetectorParameters> &_params)
+        : grey(_grey), candidatesArrays(_candidatesArrays), contoursArrays(_contoursArrays),
+          thresholdsArrays(_thresholdsArrays),
+          params(_params) {}
+
+    void operator()(const Range &range) const {
+        const int begin = range.start;
+        const int end = range.end;
+
+        for(int i = begin; i < end; i++) {
+            int currScale =
+                params->adaptiveThreshWinSizeMin + i * params->adaptiveThreshWinSizeStep;
+            // threshold
+            // Mat thresh;
+            _threshold(*grey, (*thresholdsArrays)[i], currScale, params->adaptiveThreshConstant);
+
+            // detect rectangles
+            _findMarkerContours((*thresholdsArrays)[i], (*candidatesArrays)[i], (*contoursArrays)[i],
+                                params->minMarkerPerimeterRate, params->maxMarkerPerimeterRate,
+                                params->polygonalApproxAccuracyRate, params->minCornerDistanceRate,
+                                params->minDistanceToBorder);
+        }
+    }
+
+    private:
+    DetectInitialCandidatesParallelDebug &operator=(const DetectInitialCandidatesParallelDebug &);
+
+    const Mat *grey;
+    vector< vector< vector< Point2f > > > *candidatesArrays;
+    vector< vector< vector< Point > > > *contoursArrays;
+    vector< Mat > *thresholdsArrays;
+    const Ptr<DetectorParameters> &params;
+};
+
+static void _detectInitialCandidates(const Mat &grey, vector< vector< vector< Point2f > > > &candidates,
+                                     vector< vector< vector< Point > > > &contours,
+                                     vector< Mat > &thresholds,
+                                     const Ptr<DetectorParameters> &params) {
+
+    CV_Assert(params->adaptiveThreshWinSizeMin >= 3 && params->adaptiveThreshWinSizeMax >= 3);
+    CV_Assert(params->adaptiveThreshWinSizeMax >= params->adaptiveThreshWinSizeMin);
+    CV_Assert(params->adaptiveThreshWinSizeStep > 0);
+
+    // number of window sizes (scales) to apply adaptive thresholding
+    int nScales =  (params->adaptiveThreshWinSizeMax - params->adaptiveThreshWinSizeMin) /
+                      params->adaptiveThreshWinSizeStep + 1;
+
+    /*
+    vector< vector< vector< Point2f > > > candidatesArrays((size_t) nScales);
+    vector< vector< vector< Point > > > contoursArrays((size_t) nScales);
+    */
+    candidates.resize((size_t) nScales);
+    contours.resize((size_t) nScales);
+    thresholds.resize((size_t) nScales);
+
+    parallel_for_(Range(0, nScales), DetectInitialCandidatesParallelDebug(&grey, &candidates,
+                                                                     &contours, &thresholds, params));
+    ////for each value in the interval of thresholding window sizes
+    // for(int i = 0; i < nScales; i++) {
+    //    int currScale = params.adaptiveThreshWinSizeMin + i*params.adaptiveThreshWinSizeStep;
+    //    // treshold
+    //    Mat thresh;
+    //    _threshold(grey, thresh, currScale, params.adaptiveThreshConstant);
+    //    // detect rectangles
+    //    _findMarkerContours(thresh, candidatesArrays[i], contoursArrays[i],
+    // params.minMarkerPerimeterRate,
+    //                        params.maxMarkerPerimeterRate, params.polygonalApproxAccuracyRate,
+    //                        params.minCornerDistance, params.minDistanceToBorder);
+    //}
+
+    // this is the parallel call for the previous commented loop (result is equivalent)
+    /*
+    parallel_for_(Range(0, nScales), DetectInitialCandidatesParallel(&grey, &candidatesArrays,
+                                                                     &contoursArrays, params));
+    */
+
+    // join candidates
+    /*
+    for(int i = 0; i < nScales; i++) {
+        for(unsigned int j = 0; j < candidatesArrays[i].size(); j++) {
+            candidates.push_back(candidatesArrays[i][j]);
+            contours.push_back(contoursArrays[i][j]);
+        }
+    }
+    */
+}
+
+static void _detectCandidates(InputArray _image, vector< vector< vector< Point2f > > >& candidatesOut,
+                              vector< vector< vector< Point > > >& contoursOut, vector< Mat >& thresholdsOut,
+                              const Ptr<DetectorParameters> &_params) {
+
+    Mat image = _image.getMat();
+    CV_Assert(image.total() != 0);
+
+    /// 1. CONVERT TO GRAY
+    Mat grey;
+    _convertToGrey(image, grey);
+
+    vector< vector< vector< Point2f > > > candidates;
+    vector< vector< vector< Point > > > contours;
+    vector< Mat > thresholds;
+    /// 2. DETECT FIRST SET OF CANDIDATES
+    _detectInitialCandidates(grey, candidates, contours, thresholds, _params);
+
+    /// 3. SORT CORNERS
+    // _reorderCandidatesCorners(candidates);
+
+    /// 4. FILTER OUT NEAR CANDIDATE PAIRS
+    // _filterTooCloseCandidates(candidates, candidatesOut, contours, contoursOut,
+    //                           _params->minMarkerDistanceRate);
+    candidatesOut.resize(candidates.size());
+    contoursOut.resize(contours.size());
+    thresholdsOut.resize(thresholds.size());
+    for (int i = 0; i < candidates.size(); ++i)
+    {
+      _reorderCandidatesCorners(candidates[i]);
+      _filterTooCloseCandidates(candidates[i], candidatesOut[i], contours[i], contoursOut[i],
+                                _params->minMarkerDistanceRate);
+      thresholds[i].copyTo(thresholdsOut[i]);
+    }
+}
+
+void detectMarkers(InputArray _image, const Ptr<Dictionary> &_dictionary, OutputArrayOfArrays _corners,
+                   OutputArray _ids, OutputArrayOfArrays _thresholds, const Ptr<DetectorParameters> &_params,
+                   OutputArrayOfArrays _rejectedImgPoints) {
+
+    CV_Assert(!_image.empty());
+
+    Mat grey;
+    _convertToGrey(_image.getMat(), grey);
+
+    /// STEP 1: Detect marker candidates
+    vector< vector< vector< Point2f > > > candidates;
+    vector< vector< vector< Point > > > contours;
+    vector< vector< int > > ids;
+    vector< Mat > thresholds;
+    _detectCandidates(grey, candidates, contours, thresholds, _params);
+    ids.resize(candidates.size());
+
+    for (int i = 0; i < candidates.size(); ++i)
+    {
+
+    /// STEP 2: Check candidate codification (identify markers)
+    _identifyCandidates(grey, candidates[i], contours[i], _dictionary, candidates[i], ids[i], _params,
+                        _rejectedImgPoints);
+
+    /// STEP 3: Filter detected markers;
+    // std::cout << "candidates[i].size=" << candidates[i].size() << std::endl;
+    _filterDetectedMarkers(candidates[i], ids[i]);
+
+    // copy to output arrays
+    //_copyVector2Output(candidates[i], _corners);
+
+    /// STEP 4: Corner refinement
+    if(_params->doCornerRefinement) {
+        CV_Assert(_params->cornerRefinementWinSize > 0 && _params->cornerRefinementMaxIterations > 0 &&
+                  _params->cornerRefinementMinAccuracy > 0);
+
+        //// do corner refinement for each of the detected markers
+        // for (unsigned int i = 0; i < _corners.cols(); i++) {
+        //    cornerSubPix(grey, _corners.getMat(i),
+        //                 Size(params.cornerRefinementWinSize, params.cornerRefinementWinSize),
+        //                 Size(-1, -1), TermCriteria(TermCriteria::MAX_ITER | TermCriteria::EPS,
+        //                                            params.cornerRefinementMaxIterations,
+        //                                            params.cornerRefinementMinAccuracy));
+        //}
+
+        // this is the parallel call for the previous commented loop (result is equivalent)
+        parallel_for_(Range(0, candidates[i].size()),
+                      MarkerSubpixelParallel(&grey, candidates[i], _params));
+    }
+
+    } // for each thresholded image
+
+    // candidates -> _corners
+    {
+      int max_cand = 0;
+      for (const auto &c : candidates) max_cand = c.size() > max_cand ? c.size() : max_cand;
+      const int dims[3] = { (int)candidates.size(), max_cand, 4};
+      std::cout << "dims=" << dims[0] << " " << dims[1] << " " << dims[2] << std::endl;
+      _corners.create(3, dims, CV_32FC2);
+
+      auto& m = _corners.getMatRef();
+      for (int i = 0; i < candidates.size(); ++i)
+      {
+        auto mi = m.row(i).reshape(0, 2, &dims[1]);
+        for (int j = 0; j < candidates[i].size(); ++j)
+        {
+          auto mij = mi.row(j).reshape(0, 1, &dims[2]);
+          Mat(candidates[i][j]).copyTo(mij);
+        }
+      }
+    }
+
+    // ids -> _ids
+    {
+      _ids.create((int)ids.size(), 1, CV_32SC1);
+      for (int i = 0; i < ids.size(); ++i)
+      {
+        _ids.create((int)ids[i].size(), 1, CV_32SC1, i);
+        Mat m = _ids.getMat(i);
+        Mat(ids[i]).copyTo(m);
+      }
+    }
+
+    // thresholds -> _thresholds
+    if (!thresholds.empty())
+    {
+      const int dims[3] = {(int)candidates.size(), grey.rows, grey.cols};
+      _thresholds.create(3, dims, thresholds[0].type());
+      Mat m = _thresholds.getMat();
+      for (int i = 0; i < thresholds.size(); ++i)
+      {
+        Mat mi = m.row(i).reshape(0, 2, &dims[1]);
+        thresholds[i].copyTo(mi);
+      }
+    }
+}
 
 
 }

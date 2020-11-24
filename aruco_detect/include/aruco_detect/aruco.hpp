@@ -177,6 +177,33 @@ CV_EXPORTS_W void detectMarkers(InputArray image, const Ptr<Dictionary> &diction
                                 OutputArray ids, const Ptr<DetectorParameters> &parameters = DetectorParameters::create(),
                                 OutputArrayOfArrays rejectedImgPoints = noArray());
 
+/**
+ * @brief Basic marker detection
+ *
+ * @param image input image
+ * @param dictionary indicates the type of markers that will be searched
+ * @param corners vector of vector of detected marker corners. In each threshold image, for each marker, its four corners
+ * are provided, (e.g std::vector<std::vector<std::vector<cv::Point2f> > >). For M thresholded images, N detected markers,
+ * the dimensions of this array is MxNx4. The order of the corners is clockwise.
+ * @param ids vector of vector of identifiers of the detected markers. The identifier is of type int
+ * (e.g. std::vector<std::vector<int> >). For M thresholded images, N detected markers, the size of ids is MxN.
+ * The identifiers have the same order than the markers in the imgPoints array.
+ * @param thresholds vector of thresholded image like std::vector<Mat>.
+ * @param parameters marker detection parameters
+ * @param rejectedImgPoints contains the imgPoints of those squares whose inner code has not a
+ * correct codification. Useful for debugging purposes.
+ *
+ * Performs marker detection in the input image. Only markers included in the specific dictionary
+ * are searched. For each detected marker, it returns the 2D position of its corner in the image
+ * and its corresponding identifier.
+ * Note that this function does not perform pose estimation.
+ * @sa estimatePoseSingleMarkers,  estimatePoseBoard
+ *
+ */
+CV_EXPORTS_W void detectMarkers(InputArray image, const Ptr<Dictionary> &dictionary, OutputArrayOfArrays corners,
+                                OutputArray ids, OutputArrayOfArrays thresholds,
+                                const Ptr<DetectorParameters> &parameters = DetectorParameters::create(),
+                                OutputArrayOfArrays rejectedImgPoints = noArray());
 
 
 /**

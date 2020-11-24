@@ -26,6 +26,7 @@
   <depend>python-cairosvg</depend>
   <depend>python-joblib</depend>
   <depend>nodelet</depend>
+  <depend>backward_ros</depend>
 
   <export>
     <nodelet plugin="${prefix}/nodelet_plugins.xml"/>

@@ -15,6 +15,7 @@ find_package(catkin REQUIRED COMPONENTS
   fiducial_msgs
   dynamic_reconfigure
   nodelet
+  backward_ros
 )
 
 find_package(OpenCV REQUIRED)
