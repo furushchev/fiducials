@@ -17,8 +17,8 @@
 #include <std_msgs/String.h>
 
 #include <opencv2/highgui.hpp>
-#include <opencv2/aruco.hpp>
 #include <opencv2/calib3d.hpp>
+#include "aruco_detect/aruco.hpp"
 
 #include "fiducial_msgs/Fiducial.h"
 #include "fiducial_msgs/FiducialArray.h"
@@ -61,6 +61,9 @@ class FiducialsNode {
 
     image_transport::Publisher image_pub;
 
+    bool enable_debug;
+    std::vector<image_transport::Publisher> debug_image_pubs;
+
     boost::mutex mutex;
     cv::Ptr<cv::aruco::DetectorParameters> detectorParams;
     cv::Ptr<cv::aruco::Dictionary> dictionary;
@@ -89,6 +92,8 @@ class FiducialsNode {
     void subscriberConnectionCallback(const ros::SingleSubscriberPublisher &ssp);
     void imageSubscriberConnectionCallback(const image_transport::SingleSubscriberPublisher &ssp);
     void subscriberConnectionCallback();
+
+    void publishDebugImages(const sensor_msgs::ImageConstPtr &msg);
 
     dynamic_reconfigure::Server<aruco_detect::DetectorParamsConfig> configServer;
     dynamic_reconfigure::Server<aruco_detect::DetectorParamsConfig>::CallbackType callbackType;

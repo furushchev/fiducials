@@ -15,6 +15,7 @@ find_package(catkin REQUIRED COMPONENTS
   fiducial_msgs
   dynamic_reconfigure
   nodelet
+  backward_ros
 )
 
 find_package(OpenCV REQUIRED)
@@ -34,6 +35,7 @@ include_directories(include
   ${OpenCV_INCLUDE_DIRS})
 
 add_library(${PROJECT_NAME}
+  src/aruco.cpp
   src/aruco_detect.cpp
   src/aruco_detect_nodelet.cpp)
 add_dependencies(${PROJECT_NAME}

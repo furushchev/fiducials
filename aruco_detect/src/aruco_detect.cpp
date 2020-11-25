@@ -254,6 +254,8 @@ void FiducialsNode::imageCallback(const sensor_msgs::ImageConstPtr & msg) {
     fva.header.frame_id =frameId;
     fva.image_seq = msg->header.seq;
 
+    if (enable_debug) publishDebugImages(msg);
+
     try {
         cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
 
@@ -359,6 +361,78 @@ void FiducialsNode::imageCallback(const sensor_msgs::ImageConstPtr & msg) {
     catch(cv::Exception & e) {
         ROS_ERROR("cv exception: %s", e.what());
     }
+}
+
+void FiducialsNode::publishDebugImages(const sensor_msgs::ImageConstPtr &msg)
+{
+  cv_bridge::CvImagePtr cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
+  Mat corners_mat;
+  vector < vector < int > > ids;
+  Mat thresholds_mat;
+  aruco::detectMarkers(cv_ptr->image, dictionary, corners_mat, ids, thresholds_mat, detectorParams);
+
+  // corners_mat -> corners
+  vector < vector < vector < Point2f > > > corners;
+  {
+    const int dims[3] = {corners_mat.size[0], corners_mat.size[1], corners_mat.size[2]};
+    corners.resize(dims[0]);
+    for (int i = 0; i < dims[0]; ++i)
+    {
+      auto corners_mat_i = corners_mat.row(i).reshape(0, 2, &dims[1]);
+      corners[i].resize(ids[i].size());  // Assume: dims[1] >= ids[i].size()
+      for (int j = 0; j < ids[i].size(); ++j)
+      {
+        auto corners_mat_ij = corners_mat_i.row(j).reshape(0, 1, &dims[2]);
+        corners[i][j].resize(corners_mat_ij.cols);
+        corners_mat_ij.copyTo(corners[i][j]);
+      }
+    }
+  }
+
+  // thresholds_mat -> thresholds
+  vector < Mat > thresholds;
+  {
+    const int dims[3] = { thresholds_mat.size[0], thresholds_mat.size[1], thresholds_mat.size[2]};
+    thresholds.resize(thresholds_mat.size[0]);
+    for (int i = 0; i < dims[0]; ++i)
+    {
+      auto thresholds_mat_i = thresholds_mat.row(i).reshape(0, 2, &dims[1]);
+      thresholds_mat_i.copyTo(thresholds[i]);
+    }
+  }
+
+  int all_id_counts = 0;
+  for (int i = 0; i < ids.size(); ++i)
+  {
+    all_id_counts += ids[i].size();
+  }
+  ROS_INFO("Detected %d markers using %d images", all_id_counts, (int)thresholds.size());
+
+  bool advertised = false;
+  while (debug_image_pubs.size() < thresholds.size())
+  {
+    std::ostringstream oss;
+    oss << "debug_image_" << debug_image_pubs.size();
+    debug_image_pubs.push_back(it.advertise(oss.str(), 1));
+    ROS_INFO("Advertised %s", oss.str().c_str());
+    advertised = true;
+  }
+  if (advertised)
+  {
+    ros::Rate(1.0).sleep();
+  }
+
+  for (int i = 0; i < thresholds.size(); ++i)
+  {
+    ROS_DEBUG("i=%d corners[i].size=%d ids[i].size=%d", i, (int)corners[i].size(), (int)ids[i].size());
+    cv::cvtColor(thresholds[i], thresholds[i], cv::COLOR_GRAY2BGR);
+    aruco::drawDetectedMarkers(thresholds[i], corners[i], ids[i]);
+    cv_bridge::CvImage cv_image;
+    cv_image.image = thresholds[i];
+    cv_image.header = msg->header;
+    cv_image.encoding = sensor_msgs::image_encodings::BGR8;
+    debug_image_pubs[i].publish(cv_image.toImageMsg());
+  }
 }
 
 void FiducialsNode::handleIgnoreString(const std::string& str)
@@ -550,6 +624,8 @@ FiducialsNode::FiducialsNode(ros::NodeHandle nh_, ros::NodeHandle pnh_) : nh(nh_
            ROS_ERROR("Malformed fiducial_len_override: %s", element.c_str());
         }
     }
+
+    pnh.param<bool>("enable_debug", enable_debug, false);
 
     image_transport::SubscriberStatusCallback it_conn_cb = boost::bind(
         &FiducialsNode::imageSubscriberConnectionCallback, this, _1);
