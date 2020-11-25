@@ -138,6 +138,7 @@ struct CV_EXPORTS_W DetectorParameters {
     CV_PROP_RW int minDistanceToBorder;
     CV_PROP_RW double minMarkerDistanceRate;
     CV_PROP_RW bool doCornerRefinement;
+    CV_PROP_RW bool cornerRefinementAdaptiveWinSize;
     CV_PROP_RW int cornerRefinementWinSize;
     CV_PROP_RW int cornerRefinementMaxIterations;
     CV_PROP_RW double cornerRefinementMinAccuracy;

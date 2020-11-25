@@ -66,6 +66,7 @@ DetectorParameters::DetectorParameters()
       minDistanceToBorder(3),
       minMarkerDistanceRate(0.05),
       doCornerRefinement(false),
+      cornerRefinementAdaptiveWinSize(false),
       cornerRefinementWinSize(5),
       cornerRefinementMaxIterations(30),
       cornerRefinementMinAccuracy(0.1),
@@ -1704,6 +1705,42 @@ static void _detectCandidates(InputArray _image, vector< vector< vector< Point2f
     }
 }
 
+class MarkerSubpixelParallelAdaptiveWinSize : public ParallelLoopBody {
+    public:
+    MarkerSubpixelParallelAdaptiveWinSize(const Mat *_grey, OutputArrayOfArrays _corners,
+                                          const int _markerSize,
+                                          const Ptr<DetectorParameters> &_params)
+        : grey(_grey), corners(_corners), markerSize(_markerSize), params(_params) {}
+
+    void operator()(const Range &range) const {
+        const int begin = range.start;
+        const int end = range.end;
+
+        for(int i = begin; i < end; i++) {
+            if (params->cornerRefinementAdaptiveWinSize)
+            {
+              vector< Point2f > cornerPoints = corners.getMat(i);
+              Point2f vec0 = (cornerPoints[2] - cornerPoints[0]) / markerSize;
+              Point2f vec1 = (cornerPoints[3] - cornerPoints[1]) / markerSize;
+            }
+
+            cornerSubPix(*grey, corners.getMat(i),
+                         Size(params->cornerRefinementWinSize, params->cornerRefinementWinSize),
+                         Size(-1, -1), TermCriteria(TermCriteria::MAX_ITER | TermCriteria::EPS,
+                                                    params->cornerRefinementMaxIterations,
+                                                    params->cornerRefinementMinAccuracy));
+        }
+    }
+
+    private:
+    MarkerSubpixelParallel &operator=(const MarkerSubpixelParallel &); // to quiet MSVC
+
+    const Mat *grey;
+    OutputArrayOfArrays corners;
+  const int markerSize;
+    const Ptr<DetectorParameters> &params;
+};
+
 void detectMarkers(InputArray _image, const Ptr<Dictionary> &_dictionary, OutputArrayOfArrays _corners,
                    OutputArray _ids, OutputArrayOfArrays _thresholds, const Ptr<DetectorParameters> &_params,
                    OutputArrayOfArrays _rejectedImgPoints) {
@@ -1751,7 +1788,7 @@ void detectMarkers(InputArray _image, const Ptr<Dictionary> &_dictionary, Output
 
         // this is the parallel call for the previous commented loop (result is equivalent)
         parallel_for_(Range(0, candidates[i].size()),
-                      MarkerSubpixelParallel(&grey, candidates[i], _params));
+                      MarkerSubpixelParallelAdaptiveWinSize(&grey, candidates[i], _dictionary->markerSize,  _params));
     }
 
     } // for each thresholded image
