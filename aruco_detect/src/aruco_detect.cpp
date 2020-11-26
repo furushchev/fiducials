@@ -176,7 +176,7 @@ void FiducialsNode::configCallback(aruco_detect::DetectorParamsConfig & config, 
     detectorParams->cornerRefinementMaxIterations = config.cornerRefinementMaxIterations;
     detectorParams->cornerRefinementMinAccuracy = config.cornerRefinementMinAccuracy;
     detectorParams->cornerRefinementWinSize = config.cornerRefinementWinSize;
-#if CV_MAJOR_VERSION<3 || (CV_MAJOR_VERSION<=3 && CV_MINOR_VERSION<=2)
+#if defined(GITAI_CV_ARUCO_ENABLED) || CV_MAJOR_VERSION<3 || (CV_MAJOR_VERSION<=3 && CV_MINOR_VERSION<=2)
     detectorParams->doCornerRefinement = config.doCornerRefinement;
 #else
     if (config.doCornerRefinement) {
