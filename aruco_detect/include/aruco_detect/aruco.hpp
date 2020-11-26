@@ -43,6 +43,10 @@ the use of this software, even if advised of the possibility of such damage.
 #include <vector>
 #include <opencv2/aruco/dictionary.hpp>
 
+#ifndef GITAI_CV_ARUCO_ENABLED
+#define GITAI_CV_ARUCO_ENABLED
+#endif
+
 /**
  * @defgroup aruco ArUco Marker Detection
  * This module is dedicated to square fiducial markers (also known as Augmented Reality Markers)
