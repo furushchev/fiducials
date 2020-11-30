@@ -66,6 +66,7 @@ DetectorParameters::DetectorParameters()
       minDistanceToBorder(3),
       minMarkerDistanceRate(0.05),
       doCornerRefinement(false),
+      cornerRefinementAdaptiveWinSize(false),
       cornerRefinementWinSize(5),
       cornerRefinementMaxIterations(30),
       cornerRefinementMinAccuracy(0.1),
@@ -776,7 +777,9 @@ class MarkerSubpixelParallel : public ParallelLoopBody {
 
 
 /**
-  */
+ */
+/*
+// This function is re-written below in this file.
 void detectMarkers(InputArray _image, const Ptr<Dictionary> &_dictionary, OutputArrayOfArrays _corners,
                    OutputArray _ids, const Ptr<DetectorParameters> &_params,
                    OutputArrayOfArrays _rejectedImgPoints) {
@@ -822,7 +825,7 @@ void detectMarkers(InputArray _image, const Ptr<Dictionary> &_dictionary, Output
                       MarkerSubpixelParallel(&grey, _corners, _params));
     }
 }
-
+*/
 
 
 /**
@@ -1704,6 +1707,115 @@ static void _detectCandidates(InputArray _image, vector< vector< vector< Point2f
     }
 }
 
+class MarkerSubpixelParallelAdaptiveWinSize : public ParallelLoopBody {
+    public:
+    MarkerSubpixelParallelAdaptiveWinSize(const Mat *_grey, OutputArrayOfArrays _corners,
+                                          const int _markerSize,
+                                          const Ptr<DetectorParameters> &_params)
+        : grey(_grey), corners(_corners), markerSize(_markerSize), params(_params) {}
+
+    void operator()(const Range &range) const {
+        const int begin = range.start;
+        const int end = range.end;
+
+        for(int i = begin; i < end; i++) {
+            Size winsize(params->cornerRefinementWinSize, params->cornerRefinementWinSize);
+            if (params->cornerRefinementAdaptiveWinSize)
+            {
+                vector< Point2f > cornerPoints = corners.getMat(i);
+                // find the bottom left corner point
+                int left_top_index = -1, left_bottom_index = -1;
+                {
+                    Point2f center(0.0f, 0.0f);
+                    for (const auto &p : cornerPoints) center += p;
+                    center /= 4.0f;
+                    for (int j = 0; j < 4; ++j)
+                    {
+                        if (cornerPoints[j].x < center.x)
+                        {
+                            if (cornerPoints[j].y > center.y) left_bottom_index = j;
+                            else left_top_index = j;
+                        }
+                        continue;
+                    }
+                }
+                CV_Assert(left_top_index >= 0 && left_bottom_index >= 0);
+                Point2f lb_vec = (cornerPoints[(left_bottom_index + 2) % 4] - cornerPoints[left_bottom_index]);
+                Point2f lt_vec = (cornerPoints[(left_top_index + 2) % 4] - cornerPoints[left_top_index]);
+                float min_v = min(fabs(norm(lb_vec) * cos(atan2(lb_vec.y, lb_vec.x))), fabs(norm(lt_vec) * cos(atan2(lt_vec.y, lt_vec.x)))) / (markerSize + 2);
+                float min_h = min(fabs(norm(lb_vec) * sin(atan2(lb_vec.y, lb_vec.x))), fabs(norm(lt_vec) * sin(atan2(lt_vec.y, lt_vec.x)))) / (markerSize + 2);
+                // if window size is large enough, make it small to avoid jumping points
+                if (min_v > 30.0) min_v *= 0.8f;
+                if (min_h > 30.0) min_h *= 0.8f;
+
+                winsize = Size(max(min_v, static_cast<float>(params->cornerRefinementWinSize)),
+                               max(min_h, static_cast<float>(params->cornerRefinementWinSize)));
+                // std::cout << "adaptive winsize: " << winsize << " markersize: " << markerSize << std::endl;
+                // std::cout << "lb: " << lb_vec << " lt: " << lt_vec << std::endl;
+            }
+
+            cornerSubPix(*grey, corners.getMat(i), winsize,
+                         Size(-1, -1), TermCriteria(TermCriteria::MAX_ITER | TermCriteria::EPS,
+                                                    params->cornerRefinementMaxIterations,
+                                                    params->cornerRefinementMinAccuracy));
+        }
+    }
+
+    private:
+    MarkerSubpixelParallelAdaptiveWinSize &operator=(const MarkerSubpixelParallelAdaptiveWinSize &); // to quiet MSVC
+
+    const Mat *grey;
+    OutputArrayOfArrays corners;
+    const int markerSize;
+    const Ptr<DetectorParameters> &params;
+};
+
+void detectMarkers(InputArray _image, const Ptr<Dictionary> &_dictionary, OutputArrayOfArrays _corners,
+                   OutputArray _ids, const Ptr<DetectorParameters> &_params,
+                   OutputArrayOfArrays _rejectedImgPoints) {
+
+    CV_Assert(!_image.empty());
+
+    Mat grey;
+    _convertToGrey(_image.getMat(), grey);
+
+    /// STEP 1: Detect marker candidates
+    vector< vector< Point2f > > candidates;
+    vector< vector< Point > > contours;
+    vector< int > ids;
+    _detectCandidates(grey, candidates, contours, _params);
+
+    /// STEP 2: Check candidate codification (identify markers)
+    _identifyCandidates(grey, candidates, contours, _dictionary, candidates, ids, _params,
+                        _rejectedImgPoints);
+
+    /// STEP 3: Filter detected markers;
+    _filterDetectedMarkers(candidates, ids);
+
+    // copy to output arrays
+    _copyVector2Output(candidates, _corners);
+    Mat(ids).copyTo(_ids);
+
+    /// STEP 4: Corner refinement
+    if(_params->doCornerRefinement) {
+        CV_Assert(_params->cornerRefinementWinSize > 0 && _params->cornerRefinementMaxIterations > 0 &&
+                  _params->cornerRefinementMinAccuracy > 0);
+
+        //// do corner refinement for each of the detected markers
+        // for (unsigned int i = 0; i < _corners.cols(); i++) {
+        //    cornerSubPix(grey, _corners.getMat(i),
+        //                 Size(params.cornerRefinementWinSize, params.cornerRefinementWinSize),
+        //                 Size(-1, -1), TermCriteria(TermCriteria::MAX_ITER | TermCriteria::EPS,
+        //                                            params.cornerRefinementMaxIterations,
+        //                                            params.cornerRefinementMinAccuracy));
+        //}
+
+        // this is the parallel call for the previous commented loop (result is equivalent)
+        parallel_for_(Range(0, _corners.cols()),
+                      MarkerSubpixelParallelAdaptiveWinSize(&grey, _corners, _dictionary->markerSize, _params));
+    }
+}
+
 void detectMarkers(InputArray _image, const Ptr<Dictionary> &_dictionary, OutputArrayOfArrays _corners,
                    OutputArray _ids, OutputArrayOfArrays _thresholds, const Ptr<DetectorParameters> &_params,
                    OutputArrayOfArrays _rejectedImgPoints) {
@@ -1751,7 +1863,7 @@ void detectMarkers(InputArray _image, const Ptr<Dictionary> &_dictionary, Output
 
         // this is the parallel call for the previous commented loop (result is equivalent)
         parallel_for_(Range(0, candidates[i].size()),
-                      MarkerSubpixelParallel(&grey, candidates[i], _params));
+                      MarkerSubpixelParallelAdaptiveWinSize(&grey, candidates[i], _dictionary->markerSize,  _params));
     }
 
     } // for each thresholded image
