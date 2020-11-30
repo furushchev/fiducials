@@ -777,7 +777,9 @@ class MarkerSubpixelParallel : public ParallelLoopBody {
 
 
 /**
-  */
+ */
+/*
+// This function is re-written below in this file.
 void detectMarkers(InputArray _image, const Ptr<Dictionary> &_dictionary, OutputArrayOfArrays _corners,
                    OutputArray _ids, const Ptr<DetectorParameters> &_params,
                    OutputArrayOfArrays _rejectedImgPoints) {
@@ -823,7 +825,7 @@ void detectMarkers(InputArray _image, const Ptr<Dictionary> &_dictionary, Output
                       MarkerSubpixelParallel(&grey, _corners, _params));
     }
 }
-
+*/
 
 
 /**
@@ -1717,15 +1719,41 @@ class MarkerSubpixelParallelAdaptiveWinSize : public ParallelLoopBody {
         const int end = range.end;
 
         for(int i = begin; i < end; i++) {
+            Size winsize(params->cornerRefinementWinSize, params->cornerRefinementWinSize);
             if (params->cornerRefinementAdaptiveWinSize)
             {
-              vector< Point2f > cornerPoints = corners.getMat(i);
-              Point2f vec0 = (cornerPoints[2] - cornerPoints[0]) / markerSize;
-              Point2f vec1 = (cornerPoints[3] - cornerPoints[1]) / markerSize;
+                vector< Point2f > cornerPoints = corners.getMat(i);
+                // find the bottom left corner point
+                int left_top_index = -1, left_bottom_index = -1;
+                {
+                    Point2f center(0.0f, 0.0f);
+                    for (const auto &p : cornerPoints) center += p;
+                    center /= 4.0f;
+                    for (int j = 0; j < 4; ++j)
+                    {
+                        if (cornerPoints[j].x < center.x)
+                        {
+                            if (cornerPoints[j].y > center.y) left_bottom_index = j;
+                            else left_top_index = j;
+                        }
+                        continue;
+                    }
+                }
+                CV_Assert(left_top_index >= 0 && left_bottom_index >= 0);
+                Point2f lb_vec = (cornerPoints[(left_bottom_index + 2) % 4] - cornerPoints[left_bottom_index]);
+                Point2f lt_vec = (cornerPoints[(left_top_index + 2) % 4] - cornerPoints[left_top_index]);
+                float min_v = min(fabs(norm(lb_vec) * cos(atan2(lb_vec.y, lb_vec.x))), fabs(norm(lt_vec) * cos(atan2(lt_vec.y, lt_vec.x)))) / markerSize;
+                float min_h = min(fabs(norm(lb_vec) * sin(atan2(lb_vec.y, lb_vec.x))), fabs(norm(lt_vec) * sin(atan2(lt_vec.y, lt_vec.x)))) / markerSize;
+                // if window size is large enough, make it small to avoid jumping points
+                if (min_v > 30.0) min_v *= 0.5f;
+                if (min_h > 30.0) min_h *= 0.5f;
+
+                winsize = Size(std::min(min_v, static_cast<float>(params->cornerRefinementWinSize)),
+                               std::min(min_h, static_cast<float>(params->cornerRefinementWinSize)));
+                // std::cout << "adaptive winsize: " << winsize << std::endl;
             }
 
-            cornerSubPix(*grey, corners.getMat(i),
-                         Size(params->cornerRefinementWinSize, params->cornerRefinementWinSize),
+            cornerSubPix(*grey, corners.getMat(i), winsize,
                          Size(-1, -1), TermCriteria(TermCriteria::MAX_ITER | TermCriteria::EPS,
                                                     params->cornerRefinementMaxIterations,
                                                     params->cornerRefinementMinAccuracy));
@@ -1733,13 +1761,59 @@ class MarkerSubpixelParallelAdaptiveWinSize : public ParallelLoopBody {
     }
 
     private:
-    MarkerSubpixelParallel &operator=(const MarkerSubpixelParallel &); // to quiet MSVC
+    MarkerSubpixelParallelAdaptiveWinSize &operator=(const MarkerSubpixelParallelAdaptiveWinSize &); // to quiet MSVC
 
     const Mat *grey;
     OutputArrayOfArrays corners;
-  const int markerSize;
+    const int markerSize;
     const Ptr<DetectorParameters> &params;
 };
+
+void detectMarkers(InputArray _image, const Ptr<Dictionary> &_dictionary, OutputArrayOfArrays _corners,
+                   OutputArray _ids, const Ptr<DetectorParameters> &_params,
+                   OutputArrayOfArrays _rejectedImgPoints) {
+
+    CV_Assert(!_image.empty());
+
+    Mat grey;
+    _convertToGrey(_image.getMat(), grey);
+
+    /// STEP 1: Detect marker candidates
+    vector< vector< Point2f > > candidates;
+    vector< vector< Point > > contours;
+    vector< int > ids;
+    _detectCandidates(grey, candidates, contours, _params);
+
+    /// STEP 2: Check candidate codification (identify markers)
+    _identifyCandidates(grey, candidates, contours, _dictionary, candidates, ids, _params,
+                        _rejectedImgPoints);
+
+    /// STEP 3: Filter detected markers;
+    _filterDetectedMarkers(candidates, ids);
+
+    // copy to output arrays
+    _copyVector2Output(candidates, _corners);
+    Mat(ids).copyTo(_ids);
+
+    /// STEP 4: Corner refinement
+    if(_params->doCornerRefinement) {
+        CV_Assert(_params->cornerRefinementWinSize > 0 && _params->cornerRefinementMaxIterations > 0 &&
+                  _params->cornerRefinementMinAccuracy > 0);
+
+        //// do corner refinement for each of the detected markers
+        // for (unsigned int i = 0; i < _corners.cols(); i++) {
+        //    cornerSubPix(grey, _corners.getMat(i),
+        //                 Size(params.cornerRefinementWinSize, params.cornerRefinementWinSize),
+        //                 Size(-1, -1), TermCriteria(TermCriteria::MAX_ITER | TermCriteria::EPS,
+        //                                            params.cornerRefinementMaxIterations,
+        //                                            params.cornerRefinementMinAccuracy));
+        //}
+
+        // this is the parallel call for the previous commented loop (result is equivalent)
+        parallel_for_(Range(0, _corners.cols()),
+                      MarkerSubpixelParallelAdaptiveWinSize(&grey, _corners, _dictionary->markerSize, _params));
+    }
+}
 
 void detectMarkers(InputArray _image, const Ptr<Dictionary> &_dictionary, OutputArrayOfArrays _corners,
                    OutputArray _ids, OutputArrayOfArrays _thresholds, const Ptr<DetectorParameters> &_params,
