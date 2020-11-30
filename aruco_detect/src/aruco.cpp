@@ -1742,15 +1742,16 @@ class MarkerSubpixelParallelAdaptiveWinSize : public ParallelLoopBody {
                 CV_Assert(left_top_index >= 0 && left_bottom_index >= 0);
                 Point2f lb_vec = (cornerPoints[(left_bottom_index + 2) % 4] - cornerPoints[left_bottom_index]);
                 Point2f lt_vec = (cornerPoints[(left_top_index + 2) % 4] - cornerPoints[left_top_index]);
-                float min_v = min(fabs(norm(lb_vec) * cos(atan2(lb_vec.y, lb_vec.x))), fabs(norm(lt_vec) * cos(atan2(lt_vec.y, lt_vec.x)))) / markerSize;
-                float min_h = min(fabs(norm(lb_vec) * sin(atan2(lb_vec.y, lb_vec.x))), fabs(norm(lt_vec) * sin(atan2(lt_vec.y, lt_vec.x)))) / markerSize;
+                float min_v = min(fabs(norm(lb_vec) * cos(atan2(lb_vec.y, lb_vec.x))), fabs(norm(lt_vec) * cos(atan2(lt_vec.y, lt_vec.x)))) / (markerSize + 2);
+                float min_h = min(fabs(norm(lb_vec) * sin(atan2(lb_vec.y, lb_vec.x))), fabs(norm(lt_vec) * sin(atan2(lt_vec.y, lt_vec.x)))) / (markerSize + 2);
                 // if window size is large enough, make it small to avoid jumping points
-                if (min_v > 30.0) min_v *= 0.5f;
-                if (min_h > 30.0) min_h *= 0.5f;
+                if (min_v > 30.0) min_v *= 0.8f;
+                if (min_h > 30.0) min_h *= 0.8f;
 
-                winsize = Size(std::min(min_v, static_cast<float>(params->cornerRefinementWinSize)),
-                               std::min(min_h, static_cast<float>(params->cornerRefinementWinSize)));
-                // std::cout << "adaptive winsize: " << winsize << std::endl;
+                winsize = Size(max(min_v, static_cast<float>(params->cornerRefinementWinSize)),
+                               max(min_h, static_cast<float>(params->cornerRefinementWinSize)));
+                // std::cout << "adaptive winsize: " << winsize << " markersize: " << markerSize << std::endl;
+                // std::cout << "lb: " << lb_vec << " lt: " << lt_vec << std::endl;
             }
 
             cornerSubPix(*grey, corners.getMat(i), winsize,
