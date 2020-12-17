@@ -1724,34 +1724,35 @@ class MarkerSubpixelParallelAdaptiveWinSize : public ParallelLoopBody {
             {
                 vector< Point2f > cornerPoints = corners.getMat(i);
                 // find the bottom left corner point
-                int left_top_index = -1, left_bottom_index = -1;
+                int right_top_index = -1;
+                Point2f center(0.0f, 0.0f);
+                float min_length = 10000.0f;
+                for (const auto &p : cornerPoints) center += p;
+                center /= 4.0f;
+                for (int j = 0; j < 4; ++j)
                 {
-                    Point2f center(0.0f, 0.0f);
-                    for (const auto &p : cornerPoints) center += p;
-                    center /= 4.0f;
-                    for (int j = 0; j < 4; ++j)
-                    {
-                        if (cornerPoints[j].x < center.x)
-                        {
-                            if (cornerPoints[j].y > center.y) left_bottom_index = j;
-                            else left_top_index = j;
-                        }
-                        continue;
-                    }
+                  if (center.x <= cornerPoints[j].x && center.y <= cornerPoints[j].y)
+                  {
+                    right_top_index = j;
+                  }
+                  float length = norm(cornerPoints[j] - center);
+                  if (length < min_length) min_length = length;
                 }
-                CV_Assert(left_top_index >= 0 && left_bottom_index >= 0);
-                Point2f lb_vec = (cornerPoints[(left_bottom_index + 2) % 4] - cornerPoints[left_bottom_index]);
-                Point2f lt_vec = (cornerPoints[(left_top_index + 2) % 4] - cornerPoints[left_top_index]);
-                float min_v = min(fabs(norm(lb_vec) * cos(atan2(lb_vec.y, lb_vec.x))), fabs(norm(lt_vec) * cos(atan2(lt_vec.y, lt_vec.x)))) / (markerSize + 2);
-                float min_h = min(fabs(norm(lb_vec) * sin(atan2(lb_vec.y, lb_vec.x))), fabs(norm(lt_vec) * sin(atan2(lt_vec.y, lt_vec.x)))) / (markerSize + 2);
-                // if window size is large enough, make it small to avoid jumping points
-                if (min_v > 30.0) min_v *= 0.8f;
-                if (min_h > 30.0) min_h *= 0.8f;
-
-                winsize = Size(max(min_v, static_cast<float>(params->cornerRefinementWinSize)),
-                               max(min_h, static_cast<float>(params->cornerRefinementWinSize)));
-                // std::cout << "adaptive winsize: " << winsize << " markersize: " << markerSize << std::endl;
-                // std::cout << "lb: " << lb_vec << " lt: " << lt_vec << std::endl;
+                CV_Assert(right_top_index >= 0);
+                const Point2f v = cornerPoints[right_top_index] - center;
+                const float angle = atan2(v.y, v.x);
+                if (angle < M_PI / 4)
+                {
+                  const float win = (2.0f * min_length) / (markerSize + 2) * cos(angle) * 0.8f;
+                  winsize = Size(max(win, static_cast<float>(params->cornerRefinementWinSize)),
+                                 max(win, static_cast<float>(params->cornerRefinementWinSize)));
+                }
+                else
+                {
+                  const float win = (2.0f * min_length) / (markerSize + 2) * sin(angle) * 0.8f;
+                  winsize = Size(max(win, static_cast<float>(params->cornerRefinementWinSize)),
+                                 max(win, static_cast<float>(params->cornerRefinementWinSize)));
+                }
             }
 
             cornerSubPix(*grey, corners.getMat(i), winsize,
